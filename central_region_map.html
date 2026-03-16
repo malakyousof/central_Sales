@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Central Region Sales Map</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1f2e; color: #fff; height: 100vh; display: flex; flex-direction: column; }
+  h2 { text-align: center; padding: 12px; font-size: 16px; color: #e0e6f0; letter-spacing: 1px; background: #141824; border-bottom: 1px solid #2d3550; }
+  #map-container { flex: 1; position: relative; overflow: hidden; }
+  svg { width: 100%; height: 100%; }
+  .state { stroke: #2d3550; stroke-width: 1.5; cursor: pointer; transition: all 0.2s; }
+  .state:hover { stroke: #fff; stroke-width: 2.5; filter: brightness(1.3); }
+  .state.active { stroke: #fff; stroke-width: 2.5; }
+  .state.inactive { opacity: 0.15; fill: #2d3550; }
+  #tooltip {
+    position: absolute; background: rgba(20,24,36,0.97); border: 1px solid #4a5580;
+    border-radius: 8px; padding: 10px 14px; pointer-events: none; display: none;
+    min-width: 160px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  #tooltip .state-name { font-size: 13px; font-weight: 700; color: #7eb8f7; margin-bottom: 6px; }
+  #tooltip .metric { font-size: 12px; margin: 3px 0; color: #cdd6f4; }
+  #tooltip .metric span { font-weight: 600; color: #fff; }
+  #legend {
+    position: absolute; bottom: 12px; right: 12px; background: rgba(20,24,36,0.9);
+    border: 1px solid #2d3550; border-radius: 8px; padding: 10px 14px; font-size: 11px;
+  }
+  #legend .title { font-weight: 600; color: #7eb8f7; margin-bottom: 6px; }
+  .legend-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  .legend-box { width: 14px; height: 14px; border-radius: 3px; }
+  #buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; background: #141824; border-top: 1px solid #2d3550; justify-content: center; }
+  .btn {
+    padding: 5px 12px; border-radius: 20px; border: 1px solid #4a5580;
+    background: #1e2640; color: #cdd6f4; font-size: 11px; cursor: pointer; transition: all 0.2s;
+  }
+  .btn:hover { background: #2d3a6e; border-color: #7eb8f7; color: #fff; }
+  .btn.active { background: #2d5cbb; border-color: #7eb8f7; color: #fff; }
+  #stats { display: flex; gap: 16px; padding: 8px 16px; background: #111520; justify-content: center; font-size: 11px; }
+  .stat { text-align: center; }
+  .stat .val { font-size: 15px; font-weight: 700; color: #7eb8f7; }
+  .stat .lbl { color: #888; margin-top: 2px; }
+</style>
+</head>
+<body>
+<h2>📍 Central Region — Sales by State</h2>
+<div id="stats">
+  <div class="stat"><div class="val" id="total-sales">$0</div><div class="lbl">Total Sales</div></div>
+  <div class="stat"><div class="val" id="total-profit">$0</div><div class="lbl">Total Profit</div></div>
+  <div class="stat"><div class="val" id="total-orders">0</div><div class="lbl">Orders</div></div>
+</div>
+<div id="map-container">
+  <svg id="map" viewBox="0 0 960 600"></svg>
+  <div id="tooltip">
+    <div class="state-name" id="tt-name"></div>
+    <div class="metric">Sales: <span id="tt-sales"></span></div>
+    <div class="metric">Profit: <span id="tt-profit"></span></div>
+    <div class="metric">Orders: <span id="tt-orders"></span></div>
+  </div>
+  <div id="legend">
+    <div class="title">Sales Volume</div>
+    <div class="legend-row"><div class="legend-box" style="background:#1a3a6e"></div> Low</div>
+    <div class="legend-row"><div class="legend-box" style="background:#2d6bbf"></div> Medium</div>
+    <div class="legend-row"><div class="legend-box" style="background:#4a9ff5"></div> High</div>
+    <div class="legend-row"><div class="legend-box" style="background:#7eb8f7"></div> Very High</div>
+    <div class="legend-row" style="margin-top:6px"><div class="legend-box" style="background:#ff4d6d"></div> Loss</div>
+  </div>
+</div>
+<div id="buttons">
+  <button class="btn active" onclick="filterState('all')">All States</button>
+  <button class="btn" onclick="filterState('Texas')">Texas</button>
+  <button class="btn" onclick="filterState('Illinois')">Illinois</button>
+  <button class="btn" onclick="filterState('Michigan')">Michigan</button>
+  <button class="btn" onclick="filterState('Indiana')">Indiana</button>
+  <button class="btn" onclick="filterState('Wisconsin')">Wisconsin</button>
+  <button class="btn" onclick="filterState('Minnesota')">Minnesota</button>
+  <button class="btn" onclick="filterState('Missouri')">Missouri</button>
+  <button class="btn" onclick="filterState('Oklahoma')">Oklahoma</button>
+  <button class="btn" onclick="filterState('Nebraska')">Nebraska</button>
+  <button class="btn" onclick="filterState('Iowa')">Iowa</button>
+  <button class="btn" onclick="filterState('Kansas')">Kansas</button>
+  <button class="btn" onclick="filterState('South Dakota')">South Dakota</button>
+  <button class="btn" onclick="filterState('North Dakota')">North Dakota</button>
+</div>
+
+<script>
+const data = {
+  "Illinois":     { sales: 80166.10,  profit: -12607.89, orders: 492 },
+  "Indiana":      { sales: 53555.36,  profit: 18382.94,  orders: 149 },
+  "Iowa":         { sales: 4579.76,   profit: 1183.81,   orders: 30  },
+  "Kansas":       { sales: 2914.31,   profit: 836.44,    orders: 24  },
+  "Michigan":     { sales: 76269.61,  profit: 24463.19,  orders: 255 },
+  "Minnesota":    { sales: 29863.15,  profit: 10823.19,  orders: 89  },
+  "Missouri":     { sales: 22205.15,  profit: 6436.21,   orders: 66  },
+  "Nebraska":     { sales: 7464.93,   profit: 2037.09,   orders: 38  },
+  "North Dakota": { sales: 919.91,    profit: 230.15,    orders: 7   },
+  "Oklahoma":     { sales: 19683.39,  profit: 4853.96,   orders: 66  },
+  "South Dakota": { sales: 1315.56,   profit: 394.83,    orders: 12  },
+  "Texas":        { sales: 170188.05, profit: -25729.36, orders: 985 },
+  "Wisconsin":    { sales: 32114.61,  profit: 8401.80,   orders: 110 }
+};
+
+// Simple state paths for central US states (approximate SVG paths)
+const statePaths = {
+  "North Dakota": "M 240,80 L 400,80 L 400,140 L 240,140 Z",
+  "South Dakota": "M 240,140 L 400,140 L 400,200 L 240,200 Z",
+  "Nebraska":     "M 240,200 L 400,200 L 400,250 L 240,250 Z",
+  "Kansas":       "M 240,250 L 400,250 L 400,300 L 240,300 Z",
+  "Oklahoma":     "M 240,300 L 420,300 L 420,360 L 360,360 L 360,380 L 240,380 Z",
+  "Texas":        "M 240,380 L 420,380 L 420,360 L 460,360 L 500,400 L 500,540 L 320,540 L 240,480 Z",
+  "Minnesota":    "M 400,80 L 520,80 L 540,120 L 520,140 L 400,140 Z",
+  "Iowa":         "M 400,200 L 520,200 L 540,240 L 400,250 Z",
+  "Missouri":     "M 400,250 L 540,240 L 560,300 L 500,340 L 420,300 L 400,300 Z",
+  "Wisconsin":    "M 480,100 L 560,80 L 600,120 L 580,180 L 520,200 L 480,160 Z",
+  "Michigan":     "M 580,80 L 660,80 L 680,140 L 640,180 L 600,180 L 580,140 Z",
+  "Illinois":     "M 520,200 L 580,180 L 600,260 L 560,300 L 540,240 Z",
+  "Indiana":      "M 600,180 L 660,180 L 660,280 L 600,280 L 600,260 L 580,180 Z"
+};
+
+const maxSales = Math.max(...Object.values(data).map(d => d.sales));
+
+function getColor(state) {
+  const d = data[state];
+  if (!d) return '#2d3550';
+  if (d.profit < 0) return '#ff4d6d';
+  const ratio = d.sales / maxSales;
+  if (ratio > 0.7) return '#7eb8f7';
+  if (ratio > 0.4) return '#4a9ff5';
+  if (ratio > 0.2) return '#2d6bbf';
+  return '#1a3a6e';
+}
+
+function fmt(n) { return '$' + Math.abs(n).toLocaleString('en-US', {maximumFractionDigits:0}); }
+
+let activeState = 'all';
+
+function updateStats(stateName) {
+  let s = 0, p = 0, o = 0;
+  const src = stateName === 'all' ? Object.values(data) : [data[stateName]].filter(Boolean);
+  src.forEach(d => { s += d.sales; p += d.profit; o += d.orders; });
+  document.getElementById('total-sales').textContent = fmt(s);
+  const pEl = document.getElementById('total-profit');
+  pEl.textContent = (p < 0 ? '-' : '') + fmt(p);
+  pEl.style.color = p < 0 ? '#ff4d6d' : '#7eb8f7';
+  document.getElementById('total-orders').textContent = o.toLocaleString();
+}
+
+function filterState(name) {
+  activeState = name;
+  document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.querySelectorAll('.state').forEach(el => {
+    const sn = el.getAttribute('data-name');
+    if (name === 'all') {
+      el.classList.remove('inactive', 'active');
+    } else if (sn === name) {
+      el.classList.remove('inactive');
+      el.classList.add('active');
+    } else {
+      el.classList.remove('active');
+      el.classList.add('inactive');
+    }
+  });
+  updateStats(name);
+}
+
+// Build SVG
+const svg = document.getElementById('map');
+Object.entries(statePaths).forEach(([name, path]) => {
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p.setAttribute('d', path);
+  p.setAttribute('fill', getColor(name));
+  p.setAttribute('class', 'state');
+  p.setAttribute('data-name', name);
+
+  // Label
+  const bbox_approx = { x: 0, y: 0 };
+  const coords = path.match(/[\d.]+,[\d.]+/g);
+  if (coords) {
+    const xs = coords.map(c => parseFloat(c.split(',')[0]));
+    const ys = coords.map(c => parseFloat(c.split(',')[1]));
+    bbox_approx.x = (Math.min(...xs) + Math.max(...xs)) / 2;
+    bbox_approx.y = (Math.min(...ys) + Math.max(...ys)) / 2;
+  }
+
+  const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  text.setAttribute('x', bbox_approx.x);
+  text.setAttribute('y', bbox_approx.y);
+  text.setAttribute('text-anchor', 'middle');
+  text.setAttribute('dominant-baseline', 'middle');
+  text.setAttribute('fill', '#fff');
+  text.setAttribute('font-size', '9');
+  text.setAttribute('font-family', 'Segoe UI');
+  text.setAttribute('pointer-events', 'none');
+  const abbr = name.length > 8 ? name.substring(0,2).toUpperCase() : name.substring(0,4);
+  text.textContent = abbr;
+
+  const tooltip = document.getElementById('tooltip');
+
+  p.addEventListener('mouseenter', (e) => {
+    const d = data[name];
+    if (!d) return;
+    document.getElementById('tt-name').textContent = name;
+    document.getElementById('tt-sales').textContent = fmt(d.sales);
+    const tp = document.getElementById('tt-profit');
+    tp.textContent = (d.profit < 0 ? '-' : '') + fmt(d.profit);
+    tp.style.color = d.profit < 0 ? '#ff4d6d' : '#7eb8f7';
+    document.getElementById('tt-orders').textContent = d.orders;
+    tooltip.style.display = 'block';
+  });
+
+  p.addEventListener('mousemove', (e) => {
+    const rect = document.getElementById('map-container').getBoundingClientRect();
+    let x = e.clientX - rect.left + 12;
+    let y = e.clientY - rect.top + 12;
+    if (x + 180 > rect.width) x -= 190;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  });
+
+  p.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+  });
+
+  p.addEventListener('click', () => {
+    const btn = [...document.querySelectorAll('.btn')].find(b => b.textContent === name);
+    if (btn) { btn.click(); }
+    else filterState(name);
+  });
+
+  svg.appendChild(p);
+  svg.appendChild(text);
+});
+
+updateStats('all');
+</script>
+</body>
+</html>
